@@ -12,6 +12,8 @@ import pickle
 import os
 import numpy as np
 
+import copy
+
 import NayanGeneralUtils.plotting as plotter
 
 # ==========================================================================================================================================
@@ -19,7 +21,7 @@ import NayanGeneralUtils.plotting as plotter
 # ==========================================================================================================================================
 
 def beta(T):
-    k_b = 1.38 * 10**(-23)
+    k_b = 1 # 1.38 * 10**(-23)
     return 1 / (k_b * T)
 
 
@@ -203,21 +205,24 @@ testConfig2D = config2D(100)
 #testConfig2D.plotConfig()
 #testConfig2D.runSimulation(100, beta)
 samples = 10
-testTemps= np.linspace(1, 300, samples)
+testTemps= np.linspace(.53, 3.28, samples)
 
 testBetas = beta(testTemps)
 print(testBetas)
 
-size = 100
-testConfigs = np.full(samples, config2D(size))
+size = 16
+testConfigs = np.array([config2D(size)])
+for i in range(0, samples-1):
+    testConfigs = np.append(testConfigs, config2D(size))
 
 Energies = np.empty(samples)
 magnetisations = np.empty(samples)
 for i in range(0, len(testConfigs), 1):
     testConfigs[i].plotConfig()
-    testConfigs[i].runSimulation(100, testBetas[i])
-    Energies[i] = testConfigs[i].calcEnergy()
-    magnetisations[i] = testConfigs[i].calcMag()
+    testConfigs[i].runSimulation(2000, testBetas[i])
+    Energies[i] = np.mean(testConfigs[i].energies[-1000:-1])
+    print(testConfigs[i].energies[-1000:-1])
+    magnetisations[i] = np.mean(testConfigs[i].magentisation[-1000:-1])
     testConfigs[i].plotConfig()
     
 print(Energies)
