@@ -12,7 +12,13 @@ import pickle
 import os
 import numpy as np
 
+
+from numba import jit
+from numba import njit
+import numba as nb
+
 import copy
+import time
 
 import NayanGeneralUtils.plotting as plotter
 
@@ -23,6 +29,61 @@ import NayanGeneralUtils.plotting as plotter
 def beta(T):
     k_b = 1 # 1.38 * 10**(-23)
     return 1 / (k_b * T)
+
+# utility function - returns the adjacent indicies to "index" - note modulo operation over size to handle edge cases - </function verified/>
+# utility function - returns the adjacent indicies to "index" - note modulo operation over size to handle edge cases - </function verified/>
+@njit()
+def getNeighbourIndices(index, size):
+    # get dim and setup returnable - note numba doesn't like appending to lists, so assigned full array to assign values instead
+    dim = len(index)
+    indices = np.empty((2*dim, dim), dtype=np.int64)
+
+    # add +1 adjacent tuples to first half of indices array
+    for i in range(0, dim, 1):
+        add = index.copy()
+        add[i] = (add[i]+1)%size
+        indices[i]=add   
+        
+    # add -1 adjacent tuples to second half of indices array
+    for i in range(dim, 2*dim, 1):
+        sub = index.copy()
+        sub[i-dim] = (sub[i-dim]-1)%size
+        indices[i]=sub
+
+    #print("index :", index, " adjacents: ", indices)
+    # return
+    return indices
+
+
+# gets value in multidimensional array given 1D array of index positions - note works by flattening array, and converting multidimensional indices to 1D index; done like this to satisfy numba
+@njit()
+def getArrayVal(array, indices, size): # array is N dimensional np.array, indices is 1D array with length N
+    dimensions = len(indices)
+    flatArray = array.copy().flatten()
+    flattenedIndex = 0
+    
+    for i in range(0, dimensions, 1):
+        flattenedIndex = flattenedIndex + indices[i] * ((size) ** (i))
+    
+    return flatArray[flattenedIndex]
+
+
+@njit()
+def getNeighbours(config, size, index):
+    # get indices for neighbours, and setup returnable
+    indices = getNeighbourIndices(index, size).T
+    neighbourValues = np.empty(indices.shape[1])
+    
+    # iterate through all indices and assign to returnable
+    for i in range(0, indices.shape[1]):
+        currentIndex = np.flip(indices[:,i])#.tolist()
+        #print(currentIndex)
+        neighbourValues[i] = getArrayVal(config, currentIndex, size)
+        
+    # return
+    return neighbourValues
+    
+
 
 
 # ==========================================================================================================================================
@@ -79,13 +140,20 @@ class config():
         
         # return
         return config
-       
+    
+    # getConfig - config class should save ALL states in time evolution - getConfig returns config at given time step t
+    def getConfig(self, t, returnCopy=False):
+        pass
+    
+    # appendConfig - appends a new configuration to the state
+    def appendConfig(self, config):
+        pass
     # ------------------------------------------------
     # simulation methods
     # ------------------------------------------------
     
 	# simulationStep
-    def mcMove(self, beta):
+    def mcMove(config, beta, size):
         pass
 
 	# runSimulation
@@ -99,9 +167,9 @@ class config():
         pass
     
     # observable method - calculate current magnetisation - copy/pasted from provided code - </method verified/>
-    def calcMag(self):
+    def calcMag(self, t=-1):
         '''Magnetization of a given configuration'''
-        mag = np.sum(self.state)
+        mag = np.sum(self.getConfig(t))
         return mag
 
   
@@ -130,43 +198,77 @@ class config2D(config):
     def __init__(self, size):
         super().__init__(size) 
         # main state
-        self.state =  2*np.random.randint(2, size=(size,size))-1 # the main ising model state 
-        
+        initialState = 2*np.random.randint(2, size=(size,size))-1 # the main ising model state 
+        self.state =  initialState.reshape((initialState.shape[0], initialState.shape[1], 1))
+        #print("shape ", self.state.shape, " - ", self.getConfig(0))
         # observables
         self.energies = np.array([])
         self.magentisation = np.array([])
+        
+    
+    # ------------------------------------------------
+    # utility methods
+    # ------------------------------------------------    
+    
+    # getConfig - config class should save ALL states in time evolution - getConfig returns config at given time step t - </method verified/>
+    def getConfig(self, t, returnCopy=False):
+        if(returnCopy):
+            return copy.deepcopy(self.state[:,:,t])
+        else:
+            return self.state[:,:,t]
+    
+    # appendConfig - appends a new configuration to the state - </method verified/>
+    def appendConfig(self, config):
+        self.state = np.dstack((self.state, config)) 
+    
     # ------------------------------------------------
     # simulation methods
     # ------------------------------------------------
     
+   
+    
 	# simulationStep - main MC move step - copy/pasted from provided code - need to refactor for legibility asp - </method verified/>
-    # TODO: refactor for legibility
-    def mcMove(self, beta):
-        for i in range(self.size):
-            for j in range(self.size):
-                    a = np.random.randint(0, self.size)
-                    b = np.random.randint(0, self.size)
-                    s =  self.state[a, b]
-                    nb = self.state[(a+1)%self.size,b] + self.state[a,(b+1)%self.size] + self.state[(a-1)%self.size,b] + self.state[a,(b-1)%self.size]
+    # TODO: refactor for legibility and efficiency
+    @njit()
+    def mcMove(config, beta, size):        
+        for i in range(size): # TODO: rework loop
+            for j in range(size):
+                    a = np.random.randint(0, size)
+                    b = np.random.randint(0, size) # TODO: rework random cell chosing
+                    
+                    s =  config[a, b]
+                    index = np.array([a,b]) # TODO: replace with more general system
+                    neighbours = getNeighbours(config, size, index)
+                    nb = np.sum(neighbours)
                     cost = 2*s*nb
                     if cost < 0:
                         s *= -1
                     elif rand() < np.exp(-cost*beta):
                         s *= -1
-                    self.state[a, b] = s
+                    config[a, b] = s
+        return config
         
 
 	# runSimulation
-    def runSimulation(self, steps, beta):
+    def runSimulation(self, steps, beta, plotConfigs=False, saveObservables=False, printProgress=False):
         
         for i in range(0, steps,1):
-            #print(i)
+            #if(printProgress):
+            #    print("simulation progress: ", i, " / ", steps)
+            
             # simulate step
-            self.mcMove(beta)
+            config = self.getConfig(-1, returnCopy=True)
+            #print(config, " - ", self.size)
+            newConfig = config2D.mcMove(config, beta, self.size)
+            self.appendConfig(newConfig)
+            
+            #if(plotConfigs):
+            #    self.plotConfig(t=-1)
             
             # compute and save observables
-            self.energies = np.append(self.energies, self.calcEnergy())
-            self.magentisation = np.append(self.magentisation, self.calcMag())
+            #if(saveObservables):
+            #    self.energies = np.append(self.energies, self.calcEnergy())
+            #    self.magentisation = np.append(self.magentisation, self.calcMag())
     
     # ------------------------------------------------
     # Accessor methods
@@ -175,23 +277,26 @@ class config2D(config):
 
 	# observable method - calculate current energy - copy/pasted from provided code - </method verified/>
     # TODO: refactor for legibility
-    def calcEnergy(self):
+    def calcEnergy(self, t=-1):
         '''Energy of a given configuration'''
         energy = 0
+        config = self.getConfig(t)
         for i in range(self.size):
             for j in range(self.size):
-                S = self.state[i,j]
-                nb = self.state[(i+1)%self.size, j] + self.state[i,(j+1)%self.size] + self.state[(i-1)%self.size, j] + self.state[i,(j-1)%self.size]
+                S = config[i,j]
+                index = np.array([i,j]) # TODO: replace with more general system
+                neighbours = getNeighbours(config, self.size, index)
+                nb = np.sum(neighbours)
                 energy += -nb*S
         return energy/4.  
     
     # plot the state as a 2D image - </method verified/>
     # TODO: make better
-    def plotConfig(self):
-        
-        plt.imshow(self.state, cmap='Greys')
+    def plotConfig(self, t=-1):
+        plt.imshow(self.getConfig(t), cmap='Greys')
         plt.show()
         
+    # TODO: compute more observables of interest
         
         
 
@@ -201,14 +306,41 @@ k_b = 1.38*10**(-23)
 #beta = 1 / (k_b * T)
 
 testConfig2D = config2D(100)
+
+
+#newConfig = np.array([[2,2],[2,2]])
+#newConfig2 = np.array([[3,3],[3,3]])
+#testConfig2D.appendConfig(newConfig)
+#testConfig2D.appendConfig(newConfig2)
+
+
 #print(testConfig2D.state)
 #testConfig2D.plotConfig()
-#testConfig2D.runSimulation(100, beta)
-samples = 10
+startTime = time.time()
+testConfig2D.runSimulation(500, beta(1.5), plotConfigs=False, printProgress=False)
+endTime = time.time()
+
+timeDiff = startTime - endTime
+print("timeElapsed: ", timeDiff)
+
+
+testConfig2D.saveToFile(testDirectory, "testName")
+
+readConfig = config.readFromFile(testDirectory, "testName")
+
+print("here")
+t = -1
+testConfig2D.plotConfig(t=t)
+readConfig.plotConfig(t=t)
+
+print(testConfig2D.calcEnergy(t=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
+
+"""
+samples = 20
 testTemps= np.linspace(.53, 3.28, samples)
 
 testBetas = beta(testTemps)
-print(testBetas)
+#print(testBetas)
 
 size = 16
 testConfigs = np.array([config2D(size)])
@@ -221,11 +353,11 @@ for i in range(0, len(testConfigs), 1):
     testConfigs[i].plotConfig()
     testConfigs[i].runSimulation(2000, testBetas[i])
     Energies[i] = np.mean(testConfigs[i].energies[-1000:-1])
-    print(testConfigs[i].energies[-1000:-1])
+    #print(testConfigs[i].energies[-1000:-1])
     magnetisations[i] = np.mean(testConfigs[i].magentisation[-1000:-1])
     testConfigs[i].plotConfig()
     
-print(Energies)
+#print(Energies)
 plotE = plotter.plotter()
 plotE.gridline()
 plotE.scatter(testTemps, Energies, marker = 'x', color='k', label="")
@@ -242,7 +374,7 @@ plotM.display()
 #print(testConfig2D.calcMag())
 #print(testConfig2D.calcEnergy())
 #testConfig2D.saveToFile(testDirectory, "testName2")
-
+"""
 #readConfig2D = config.readFromFile(testDirectory, "testName2")
 
 #print(testConfig2D.temp3)
