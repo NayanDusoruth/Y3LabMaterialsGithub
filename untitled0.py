@@ -105,10 +105,22 @@ testArray2 = np.array([["00", "01", "02", "03", "04"],
                        ["40", "41", "42", "43", "44"]])
 
 
+
+dim = 3
+size = 5
+# utility method - given 1D array of Nd array sizes; returns array to power of index in array - is used for coord flattening reasons - </function verified/>
+@jit()
+def getPowers(dim, size):
+    sizes = np.full(dim, size)
+    dimensions = np.arange(0, dim, 1)
+    return np.power(sizes, dimensions)
+print(getPowers(3,5))
+
+
 for i in range(0, 5):
     for j in range(0,5):
         coord00 = np.array([j,i])
-        print(np.flip(coord00), ":", getArrayVal(testArray2, coord00, 5))
+        #print(np.flip(coord00), ":", getArrayVal(testArray2, coord00, 5))
 #print(nb.typeof(nb.int64[::1]))
 #print(getNeighbourIndices(coord, 3))
 
