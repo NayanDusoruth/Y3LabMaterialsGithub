@@ -103,12 +103,8 @@ def getNeighbours(configB, size, index, basis, adjacencyIndices, dimension):
         
         currentIndex = indices[:,i]#.tolist()
         flattenedIndex = np.sum(np.flip(currentIndex) * basis)
-    #neighbourValues[i] = flatArray[flattenedIndex]
-        
-        #print(currentIndex)
-        #neighbourValues[i] = getArrayVal(configB, currentIndex, size, basis)
-        
-    #print(neighbourValues)
+        neighbourValues[i] = flatArray[flattenedIndex]
+
     # return
     return neighbourValues
     
@@ -137,8 +133,8 @@ class config():
         self.basis = getPowers(self.dimension , self.size) # basis for Nd array a
         
         initialState = 2*np.random.randint(2, size=tuple(self.sizes))-1 # the main ising model state 
-        self.state =  initialState.reshape((initialState.shape[0], initialState.shape[1], 1)) #TODO: fix - something here breaks in other dimensions
-
+        self.state =  [initialState]
+                
         # observables
         self.energies = np.array([])
         self.magentisation = np.array([])
@@ -182,18 +178,18 @@ class config():
         return config
     
     
-    # TODO: ADJUST - maybe rework to be a bit more anonymous passing in a state instead of using self
     # getConfig - config class should save ALL states in time evolution - getConfig returns config at given time step t - </method verified/>
-    def getConfig(self, t, returnCopy=False):
+    def getConfig(self, t, returnCopy=True):
+        stateSlice = self.state[t]
         if(returnCopy):
-            return copy.deepcopy(self.state[:,:,t])
+            return copy.deepcopy(stateSlice)
         else:
-            return self.state[:,:,t]
+            return stateSlice
     
     
     # appendConfig - appends a new configuration to the state - </method verified/>
     def appendConfig(self, config):
-        self.state = np.dstack((self.state, config)) 
+        self.state.append(config)
         
         
     # ------------------------------------------------
@@ -206,41 +202,62 @@ class config():
         for cell in range(0, totalSize, 1): 
             randomIndex = np.random.randint(0,size, size=dimension) # get random cell position
 
-            s = getArrayVal(config, randomIndex, size, basis) # get value of randomIndex
-            neighbours = getNeighbours(config, size, randomIndex, basis, adjacencyIndices, dimension) # get values of neighbouring indices
+            # get value of config at randomIndex - note code written like this to please numba
+            flatArray = config.copy().flatten()
+            flattenedIndex = np.sum(np.flip(randomIndex) * basis)
+            s = flatArray[flattenedIndex]
             
-            nb = np.sum(neighbours) # compute sum of neighbours
+    
+            nb = 0
+            # get neighbour indices using adjacencyIndices and use that to add neighbour spin values to nb
+            for i in range(0, 2*dimension, 1):
+                currentIndex = (adjacencyIndices[i] + randomIndex)%size
+                flattenedIndex = np.sum(np.flip(currentIndex) * basis)
+                nb +=flatArray[flattenedIndex]
+           
             cost = 2*s*nb # compute cost
-            
             if cost < 0:
                 s *= -1
             elif rand() < np.exp(-cost*beta):
                 s *= -1
                 
-            config = editArrayVal(config, randomIndex, sizesTuple, basis, s) #edit value
+            #config = editArrayVal(config, randomIndex, sizesTuple, basis, s) #edit value
+            flattenedIndex = np.sum(np.flip(randomIndex) * basis)
+            flatArray[flattenedIndex] = s
+            config = flatArray.reshape(sizesTuple)
+            
+            
         return config
 
 	# runSimulation
-    def runSimulation(self, steps, beta, plotConfigs=False, saveObservables=False, printProgress=False):
+    def runSimulation(self, steps, beta, saveConfigs = True, plotConfigs=False, saveObservables=False, printProgress=False):
         
         curConfig = self.getConfig(-1, returnCopy=True)
         configSize = self.size ** self.dimension
+        
         for i in range(0, steps,1):
-            #if(printProgress):
-            #    print("simulation progress: ", i, " / ", steps)
+            if(printProgress):
+                print("simulation progress: ", i, " / ", steps)
+            
             
             # simulate step
-      
             curConfig = config.mcMove(curConfig, beta, self.size, self.dimension, self.basis, self.sizes, self.sizesTuple, configSize, self.adjacencyIndices)
-            self.appendConfig(curConfig)
+
+            if(saveConfigs): 
+               self.appendConfig(curConfig)
+
             
-            #if(plotConfigs):
-            #    self.plotConfig(t=-1)
+            if(plotConfigs):
+                self.plotConfig(t=-1)
             
             # compute and save observables
-            #if(saveObservables):
-            #    self.energies = np.append(self.energies, self.calcEnergy())
-            #    self.magentisation = np.append(self.magentisation, self.calcMag())
+            if(saveObservables):
+                self.energies = np.append(self.energies, self.calcEnergy())
+                self.magentisation = np.append(self.magentisation, self.calcMag())
+            
+        #if(not saveConfigs):
+        #    self.appendConfig(curConfig) # append last config to state
+        
     
     # ------------------------------------------------
     # Accessor methods
@@ -274,12 +291,30 @@ class config():
     # TODO: make better
     #TODO: lock out for D != 1, 2 = otherwise will break
     def plotConfig(self, t=-1):
+        
+        if(self.dimension == 1 or self.dimension == 2):
+            self.plotConfig1_2D(t)
+        elif(self.dimension == 3):
+            self.plotConfig3D(t)
+       
+        
+      # graphing method - basic 1-2D plotting method 
+    def plotConfig1_2D(self, t):
         plt.imshow(self.getConfig(t), cmap='Greys')
         plt.show()
         
+    def plotConfig3D(self, t):
+        boolArray = self.getConfig(t) >0
+        
+        #boolArray = np.array([[[True, False, True], [False, False, False], [True, False, True]], [[False, False, False], [False, False, False], [False, False, False]], [[True, False, True], [False, False, False], [True, False, True]]])
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(projection='3d')
+        ax.set_aspect('equal')
 
-  
-    
+        ax.voxels(boolArray, edgecolor="k")
+
+        plt.show()
 
 # testing
     
@@ -299,7 +334,7 @@ T = 300
 k_b = 1.38*10**(-23)
 #beta = 1 / (k_b * T)
 
-testConfig = config(100,2)
+testConfig = config(20,3)
 
 
 #newConfig = np.array([[2,2],[2,2]])
@@ -311,23 +346,24 @@ testConfig = config(100,2)
 #print(testConfig2D.state)
 #testConfig2D.plotConfig()
 startTime = time.time()
-testConfig.runSimulation(500, beta(1.5), plotConfigs=True, printProgress=False)
+testConfig.runSimulation(100, beta(1.5), plotConfigs=True, printProgress=False)
 endTime = time.time()
 
 timeDiff = startTime - endTime
 print("timeElapsed: ", timeDiff)
-
+print(testConfig.state)
+#print("shape",testConfig.getConfig(0).shape)
+#print("shape",testConfig.getConfig(0))
 
 testConfig.saveToFile(testDirectory, "testName")
 
 readConfig = config.readFromFile(testDirectory, "testName")
 
-print("here")
 t = -1
-testConfig.plotConfig(t=t)
-readConfig.plotConfig(t=t)
+#testConfig.plotConfig(t=t)
+#readConfig.plotConfig(t=t)
 
-print(testConfig.calcEnergy(t=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
+#print(testConfig.calcEnergy(t=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
 
 """
 samples = 20

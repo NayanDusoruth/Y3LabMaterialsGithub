@@ -18,6 +18,19 @@ testArray = np.array([[1, 2, 3],
                       [4, 5, 6], 
                       [7, 8, 9]])
 indices = np.array([0,0]).T
+
+arr1 = np.array([1,2])
+arr2 = np.array([3,4])
+
+list1 = []
+
+list1.append(arr1)
+list1.append(arr2)
+print(list1)
+
+print(testArray)
+print(testArray[:,1])
+print(np.vstack((testArray, np.array([[10, 11, 12], [13, 14, 15]]))))
 #print(indices)
 #print(tuple(3))
 #print(testArray[indices])
@@ -141,7 +154,7 @@ def getNeighbourIndices(index, adjacencyIndices, size, dimension):
 dim = 3
 size = 5
 # utility method - given 1D array of Nd array sizes; returns array to power of index in array - is used for coord flattening reasons - </function verified/>
-print(getNeighbourIndices(np.array([1,1,1]),getAdjacencies(dim), 2, dim))
+#print(getNeighbourIndices(np.array([1,1,1]),getAdjacencies(dim), 2, dim))
 #print(getNeighbourIndices(coord, 3))
 
 #print(getNeighbours(testArray, 3, coord))
