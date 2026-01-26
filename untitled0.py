@@ -106,22 +106,42 @@ testArray2 = np.array([["00", "01", "02", "03", "04"],
 
 
 
+
+
+@njit()
+def getAdjacencies(dimension):
+    indices = np.empty((2*dimension, dimension), dtype=np.int64)
+    
+    # add +1 adjacent tuples to first half of indices array
+    for i in range(0, dimension, 1):
+        add =  np.empty(dimension, dtype=np.int64)
+        add[i] = add[i]+1
+        indices[i]=add   
+        
+    # add -1 adjacent tuples to second half of indices array
+    for i in range(dimension, 2*dimension, 1):
+        sub = np.empty(dimension, dtype=np.int64)
+        sub[i-dimension] = sub[i-dimension]-1
+        indices[i]=sub
+
+    return indices
+
+
+@njit()
+def getNeighbourIndices(index, adjacencyIndices, size, dimension):
+
+    indices =  adjacencyIndices.copy()
+
+    for i in range(0, 2*dimension, 1):
+        indices[i] = (indices[i] + index)%size
+
+    # return
+    return indices
+
 dim = 3
 size = 5
 # utility method - given 1D array of Nd array sizes; returns array to power of index in array - is used for coord flattening reasons - </function verified/>
-@jit()
-def getPowers(dim, size):
-    sizes = np.full(dim, size)
-    dimensions = np.arange(0, dim, 1)
-    return np.power(sizes, dimensions)
-print(getPowers(3,5))
-
-
-for i in range(0, 5):
-    for j in range(0,5):
-        coord00 = np.array([j,i])
-        #print(np.flip(coord00), ":", getArrayVal(testArray2, coord00, 5))
-#print(nb.typeof(nb.int64[::1]))
+print(getNeighbourIndices(np.array([1,1,1]),getAdjacencies(dim), 2, dim))
 #print(getNeighbourIndices(coord, 3))
 
 #print(getNeighbours(testArray, 3, coord))

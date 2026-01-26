@@ -31,36 +31,40 @@ def beta(T):
     return 1 / (k_b * T)
 
 # utility method - given 1D array of Nd array sizes; returns array to power of index in array - is used for coord flattening reasons - </function verified/>
-@jit()
+@njit()
 def getPowers(dim, size):
     sizes = np.full(dim, size)
     dimensions = np.arange(0, dim, 1)
     return np.power(sizes, dimensions)
 
-# utility function - returns the adjacent indicies to "index" - note modulo operation over size to handle edge cases - </function verified/>
-# TODO: rework - getting a "dimensional map" of add/sub operations can be done once per config object based off of the dimension
-# that dimensional map can then be added%size to index seperately
-# pass in dimension as parameter instead of evaluating it; config object should know its own dimensionality
-# may speed up computation; esp since don't need to loop twice every adjacency call (array operations are probably not as good numba'd but probably still better; plus fewer calls)
+# computes the array "adjacencies" given a dimension
 @njit()
-def getNeighbourIndices(index, size):
-    # get dim and setup returnable - note numba doesn't like appending to lists, so assigned full array to assign values instead
-    dim = len(index)
-    indices = np.empty((2*dim, dim), dtype=np.int64)
-
+def getAdjacencies(dimension):
+    indices = np.empty((2*dimension, dimension), dtype=np.int64)
+    
     # add +1 adjacent tuples to first half of indices array
-    for i in range(0, dim, 1):
-        add = index.copy()
-        add[i] = (add[i]+1)%size
+    for i in range(0, dimension, 1):
+        add =  np.empty(dimension, dtype=np.int64)
+        add[i] = add[i]+1
         indices[i]=add   
         
     # add -1 adjacent tuples to second half of indices array
-    for i in range(dim, 2*dim, 1):
-        sub = index.copy()
-        sub[i-dim] = (sub[i-dim]-1)%size
+    for i in range(dimension, 2*dimension, 1):
+        sub = np.empty(dimension, dtype=np.int64)
+        sub[i-dimension] = sub[i-dimension]-1
         indices[i]=sub
 
-    #print("index :", index, " adjacents: ", indices)
+    return indices
+
+# computes the nheigbour indices for an index given the adjacencyIndices, size and dimension
+@njit()
+def getNeighbourIndices(index, adjacencyIndices, size, dimension):
+
+    indices =  adjacencyIndices.copy()
+
+    for i in range(0, 2*dimension, 1):
+        indices[i] = (indices[i] + index)%size
+
     # return
     return indices
 
@@ -89,10 +93,9 @@ def editArrayVal(array, indices, sizesTuple, basis, newVal):
 
 
 @njit()
-def getNeighbours(configB, size, index, basis):
+def getNeighbours(configB, size, index, basis, adjacencyIndices, dimension):
     # get indices for neighbours, and setup returnable
-    dimensions = len(basis)
-    indices = getNeighbourIndices(index, size).T
+    indices = getNeighbourIndices(index,adjacencyIndices, size, dimension).T
     neighbourValues = np.empty(indices.shape[1])
     flatArray = configB.copy().flatten()
     # iterate through all indices and assign to returnable
@@ -128,6 +131,8 @@ class config():
         self.dimension = dimension
         self.sizes = np.full(dimension, size)
         self.sizesTuple = tuple(self.sizes)
+        
+        self.adjacencyIndices = getAdjacencies(self.dimension)
         
         self.basis = getPowers(self.dimension , self.size) # basis for Nd array a
         
@@ -197,13 +202,13 @@ class config():
     
 	# simulationStep - main MC move step - copy/pasted from provided code - need to refactor for legibility asp - </method verified/>
     @njit()
-    def mcMove(config, beta, size, dimension, basis, sizes, sizesTuple):      
-        for cell in config: 
-
+    def mcMove(config, beta, size, dimension, basis, sizes, sizesTuple, totalSize, adjacencyIndices):    
+        for cell in range(0, totalSize, 1): 
             randomIndex = np.random.randint(0,size, size=dimension) # get random cell position
 
             s = getArrayVal(config, randomIndex, size, basis) # get value of randomIndex
-            neighbours = getNeighbours(config, size, randomIndex, basis) # get values of neighbouring indices
+            neighbours = getNeighbours(config, size, randomIndex, basis, adjacencyIndices, dimension) # get values of neighbouring indices
+            
             nb = np.sum(neighbours) # compute sum of neighbours
             cost = 2*s*nb # compute cost
             
@@ -219,22 +224,23 @@ class config():
     def runSimulation(self, steps, beta, plotConfigs=False, saveObservables=False, printProgress=False):
         
         curConfig = self.getConfig(-1, returnCopy=True)
+        configSize = self.size ** self.dimension
         for i in range(0, steps,1):
             #if(printProgress):
             #    print("simulation progress: ", i, " / ", steps)
             
             # simulate step
       
-            curConfig = config.mcMove(curConfig, beta, self.size, self.dimension, self.basis, self.sizes, self.sizesTuple)
+            curConfig = config.mcMove(curConfig, beta, self.size, self.dimension, self.basis, self.sizes, self.sizesTuple, configSize, self.adjacencyIndices)
             self.appendConfig(curConfig)
             
             #if(plotConfigs):
             #    self.plotConfig(t=-1)
             
             # compute and save observables
-            if(saveObservables):
-                self.energies = np.append(self.energies, self.calcEnergy())
-                self.magentisation = np.append(self.magentisation, self.calcMag())
+            #if(saveObservables):
+            #    self.energies = np.append(self.energies, self.calcEnergy())
+            #    self.magentisation = np.append(self.magentisation, self.calcMag())
     
     # ------------------------------------------------
     # Accessor methods
@@ -251,7 +257,7 @@ class config():
             for j in range(self.size):
                 S = config[i,j]
                 index = np.array([i,j]) # TODO: replace with more general system
-                neighbours = getNeighbours(config, self.size, index, self.basis)
+                neighbours = getNeighbours(config, self.size, index, self.basis, self.adjacencyIndices, self.dimension)
                 nb = np.sum(neighbours)
                 energy += -nb*S
         return energy/4.  
@@ -305,7 +311,7 @@ testConfig = config(100,2)
 #print(testConfig2D.state)
 #testConfig2D.plotConfig()
 startTime = time.time()
-testConfig.runSimulation(500, beta(1.5), plotConfigs=False, printProgress=False)
+testConfig.runSimulation(500, beta(1.5), plotConfigs=True, printProgress=False)
 endTime = time.time()
 
 timeDiff = startTime - endTime
