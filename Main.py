@@ -212,7 +212,7 @@ class config():
             # get neighbour indices using adjacencyIndices and use that to add neighbour spin values to nb
             for i in range(0, 2*dimension, 1):
                 currentIndex = (adjacencyIndices[i] + randomIndex)%size
-                flattenedIndex = np.sum(np.flip(currentIndex) * basis)
+                flattenedIndex = np.sum(np.flip(currentIndex) * basis) # remove the np.flip for funky results; note symetry along diagonal
                 nb +=flatArray[flattenedIndex]
            
             cost = 2*s*nb # compute cost
@@ -334,7 +334,7 @@ T = 300
 k_b = 1.38*10**(-23)
 #beta = 1 / (k_b * T)
 
-testConfig = config(20,3)
+testConfig = config(200,2)
 
 
 #newConfig = np.array([[2,2],[2,2]])
@@ -346,12 +346,12 @@ testConfig = config(20,3)
 #print(testConfig2D.state)
 #testConfig2D.plotConfig()
 startTime = time.time()
-testConfig.runSimulation(100, beta(1.5), plotConfigs=True, printProgress=False)
+testConfig.runSimulation(500, beta(1.5), plotConfigs=True, printProgress=False)
 endTime = time.time()
 
 timeDiff = startTime - endTime
 print("timeElapsed: ", timeDiff)
-print(testConfig.state)
+#print(testConfig.state)
 #print("shape",testConfig.getConfig(0).shape)
 #print("shape",testConfig.getConfig(0))
 
