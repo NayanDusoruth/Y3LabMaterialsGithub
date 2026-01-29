@@ -40,7 +40,7 @@ testConfig = config(20,2)
 #print(testConfig2D.state)
 #testConfig2D.plotConfig()
 startTime = time.time()
-testConfig.runSimulation(10, beta(1.5), plotConfigs=True, printProgress=False, saveFigs=True, saveDirectory="/Users/nayandusoruth/Desktop/Y3physics/LabModule/labProject/testFolder")
+testConfig.runSimulation(55, beta(1.5), plotConfigs=True, printProgress=False, saveFigs=True, saveDirectory="/Users/scarlettspiller/MSciLabs/OutputFigs")
 endTime = time.time()
 
 timeDiff = startTime - endTime
