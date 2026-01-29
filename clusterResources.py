@@ -31,13 +31,13 @@ def getCluster(config, startingCell, adjacencies):
      
     # get neighbours
     neighbours = [*getNeighbourIndices(startingCell, adjacencies, config.shape[0], config.ndim)]
-    print("this",initialSpin)
+    
      
     # check neighbour validity - remove invalid neighbours
     for i in range(0, len(neighbours), 1):
         neighbour = neighbours[i]
         if(not(config[tuple(neighbour)] == initialSpin)):
-            neighbours.remove(i)
+            neighbours.pop(i)
              
      
     if(len(neighbours) == 0):
@@ -45,4 +45,5 @@ def getCluster(config, startingCell, adjacencies):
         pass
     else:
     # recursive case - getCluster on neighbours
-        pass
+        for neighbour in neighbours:
+            returnable.append()

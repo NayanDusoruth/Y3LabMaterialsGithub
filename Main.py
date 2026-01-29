@@ -26,6 +26,21 @@ import time
 # code utilities
 # ==========================================================================================================================================
 
+# utility function - saves fig to directory with filename - </verified/>
+def saveFigure(directory, fileName, fig):
+    """File handling function - saves fig to directory with filename"""
+    # go to desired directory
+    curDir = os.getcwd() # get the current directory
+    os.chdir(directory)
+
+    # save figure to folder
+    fig.savefig(fileName, dpi=300, bbox_inches='tight')
+    
+    # go back to original directory
+    os.chdir(curDir)
+    
+
+
 def beta(T):
     k_b = 1 # 1.38 * 10**(-23)
     return 1 / (k_b * T)
