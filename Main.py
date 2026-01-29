@@ -245,7 +245,7 @@ class config():
         return config
 
 	# runSimulation
-    def runSimulation(self, steps, beta, saveConfigs = True, plotConfigs=False, saveObservables=False, printProgress=False):
+    def runSimulation(self, steps, beta, saveConfigs = True, plotConfigs=False, saveObservables=False, printProgress=False, saveFigs=False, saveDirectory=""):
         
         curConfig = self.getConfig(-1, returnCopy=True)
         configSize = self.size ** self.dimension
@@ -261,7 +261,9 @@ class config():
             if(saveConfigs): 
                self.appendConfig(curConfig)
 
-            
+            if(saveFigs):
+                saveFigure(saveDirectory, str(i), self.plotConfig( t=-1, returnFig=True))
+
             if(plotConfigs):
                 self.plotConfig(t=-1)
             
@@ -306,18 +308,24 @@ class config():
     # plot the state as a 2D image - </method verified/>
     # TODO: make better
     #TODO: lock out for D != 1, 2 = otherwise will break
-    def plotConfig(self, t=-1):
+    def plotConfig(self, t=-1, returnFig=False):
         
         if(self.dimension == 1 or self.dimension == 2):
-            self.plotConfig1_2D(t)
+            fig = self.plotConfig1_2D(t)
         elif(self.dimension == 3):
-            self.plotConfig3D(t)
+            fig = self.plotConfig3D(t)
+        
+        if(returnFig):
+            return fig
        
         
       # graphing method - basic 1-2D plotting method 
     def plotConfig1_2D(self, t):
-        plt.imshow(self.getConfig(t), cmap='Greys')
+        fig, ax = plt.subplots()
+        ax.imshow(self.getConfig(t), cmap='Greys')
         plt.show()
+        
+        return fig
         
     def plotConfig3D(self, t):
         boolArray = self.getConfig(t) >0
@@ -331,6 +339,7 @@ class config():
         ax.voxels(boolArray, edgecolor="k")
 
         plt.show()
+        return fig
 
 # testing
     
