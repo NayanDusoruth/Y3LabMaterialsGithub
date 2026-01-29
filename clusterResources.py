@@ -25,7 +25,7 @@ from Main import *
  # cluster algorithms
  # ------------------------------------------------
  
-def getCluster(config, startingCell, adjacencies):
+def getCluster(config, startingCell, adjacencies, alreadyVisited=[]):
     returnable =[startingCell]
     initialSpin = config[tuple(startingCell)]
      
@@ -38,7 +38,12 @@ def getCluster(config, startingCell, adjacencies):
     for i in range(0, len(neighbours), 1):
         neighbour = neighbours[i]
         if(not(config[tuple(neighbour)] == initialSpin)):
-            removeList.append[i]
+            removeList.append(i)
+            
+        for visited in alreadyVisited:
+            if(np.equal(neighbour, visited)):
+                print("here")
+                removeList.append(i)
             
     for indices in removeList:
         neighbours.pop(indices)
@@ -46,7 +51,7 @@ def getCluster(config, startingCell, adjacencies):
      
     if(len(neighbours) == 0):
     # base case - no valid neighbours
-        return np.empty(startingCell.shape[0])
+        return returnable
     else:
     # recursive case - getCluster on neighbours
         for neighbour in neighbours:

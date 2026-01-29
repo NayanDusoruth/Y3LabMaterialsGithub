@@ -30,7 +30,7 @@ k_b = 1.38*10**(-23)
 
 testConfig = config(20,2)
 
-
+#blasgg
 #newConfig = np.array([[2,2],[2,2]])
 #newConfig2 = np.array([[3,3],[3,3]])
 #testConfig2D.appendConfig(newConfig)
@@ -40,7 +40,7 @@ testConfig = config(20,2)
 #print(testConfig2D.state)
 #testConfig2D.plotConfig()
 startTime = time.time()
-testConfig.runSimulation(55, beta(1.5), plotConfigs=True, printProgress=False, saveFigs=True, saveDirectory="/Users/scarlettspiller/MSciLabs/OutputFigs")
+testConfig.runSimulation(55, beta(1.5), plotConfigs=True, printProgress=False, saveFigs=False, saveDirectory="/Users/scarlettspiller/MSciLabs/OutputFigs")
 endTime = time.time()
 
 timeDiff = startTime - endTime
