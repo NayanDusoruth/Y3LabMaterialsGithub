@@ -50,8 +50,8 @@ print("timeElapsed: ", timeDiff)
 #print("shape",testConfig.getConfig(0))
 
 
-getCluster(testConfig.getConfig(-1), np.array([0,0]), testConfig.adjacencyIndices)
-
+cluster = getCluster(testConfig.getConfig(-1), np.array([0,0]), testConfig.adjacencyIndices)
+print(cluster)
 testConfig.saveToFile(testDirectory, "testName")
 
 readConfig = config.readFromFile(testDirectory, "testName")

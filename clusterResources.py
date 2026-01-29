@@ -34,16 +34,21 @@ def getCluster(config, startingCell, adjacencies):
     
      
     # check neighbour validity - remove invalid neighbours
+    removeList = []
     for i in range(0, len(neighbours), 1):
         neighbour = neighbours[i]
         if(not(config[tuple(neighbour)] == initialSpin)):
-            neighbours.pop(i)
+            removeList.append[i]
+            
+    for indices in removeList:
+        neighbours.pop(indices)
              
      
     if(len(neighbours) == 0):
     # base case - no valid neighbours
-        pass
+        return np.empty(startingCell.shape[0])
     else:
     # recursive case - getCluster on neighbours
         for neighbour in neighbours:
-            returnable.append()
+            returnable.append(getCluster(config, neighbour, adjacencies))
+            return returnable
