@@ -39,6 +39,14 @@ def saveFigure(directory, fileName, fig):
     # go back to original directory
     os.chdir(curDir)
     
+    
+# create new folder
+def createFolder(directory, folderName):
+    """File handling function - creates new folder at 'directory/folderName'"""
+    newPath = str(directory + "/"+folderName)
+    if (not os.path.exists(newPath)):
+        os.makedirs(newPath)
+    return newPath
 
 
 def beta(T):
@@ -278,7 +286,7 @@ class config():
     
     
     # ------------------------------------------------
-    # Accessor methods
+    # Observable methods
     # ------------------------------------------------
 
 	# observable method - calculate current energy - copy/pasted from provided code - </method verified/>
@@ -304,6 +312,10 @@ class config():
         return mag
     
     
+    
+    # ------------------------------------------------
+    # plotting methods
+    # ------------------------------------------------
     
     # plot the state as a 2D image - </method verified/>
     # TODO: make better
