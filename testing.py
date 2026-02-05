@@ -28,7 +28,7 @@ T = 300
 k_b = 1.38*10**(-23)
 #beta = 1 / (k_b * T)
 
-testConfig = config(20,2)
+testConfig = config(10,2)
 
 #blasgg
 #newConfig = np.array([[2,2],[2,2]])
@@ -40,7 +40,7 @@ testConfig = config(20,2)
 #print(testConfig2D.state)
 #testConfig2D.plotConfig()
 startTime = time.time()
-testConfig.runSimulation(55, beta(1.5), plotConfigs=True, printProgress=False, saveFigs=False, saveDirectory="/Users/scarlettspiller/MSciLabs/OutputFigs")
+testConfig.runSimulation(100, beta(1.5), plotConfigs=True, printProgress=False, saveFigs=False, saveDirectory="/Users/scarlettspiller/MSciLabs/OutputFigs")
 endTime = time.time()
 
 timeDiff = startTime - endTime
@@ -50,8 +50,21 @@ print("timeElapsed: ", timeDiff)
 #print("shape",testConfig.getConfig(0))
 
 
-cluster = getCluster(testConfig.getConfig(-1), np.array([0,0]), testConfig.adjacencyIndices)
-print(cluster)
+
+
+
+
+startIndex = -10
+finalIndex = -1  
+
+
+print(testConfig.averageEnergy(startIndex, finalIndex))
+print(testConfig.averageMag(startIndex, finalIndex))
+print(testConfig.averagePartition(startIndex, finalIndex))
+print(testConfig.averageEntropy(startIndex, finalIndex))
+print(testConfig.averageHelmholtz(startIndex, finalIndex))
+#cluster = getCluster(testConfig.getConfig(-1), np.array([0,0]), testConfig.adjacencyIndices)
+#print(cluster)
 testConfig.saveToFile(testDirectory, "testName")
 
 readConfig = config.readFromFile(testDirectory, "testName")

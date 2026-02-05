@@ -19,6 +19,7 @@ import numba as nb
 
 import copy
 import time
+import json
 
 #import NayanGeneralUtils.plotting as plotter
 
@@ -26,7 +27,48 @@ import time
 # code utilities
 # ==========================================================================================================================================
 
-# utility function - saves fig to directory with filename - </verified/>
+# utility function - saves dataframe as csv to filepath/filename.csv - </verified/> - code borrowed from nayanGeneralUtils
+def saveCSV(filepath, filename, dataFrame):
+    """File handling function - saves dataframe as csv to filepath/filename.csv"""
+    curDir = os.getcwd() # get the current directory
+    os.chdir(filepath)
+    path = filepath + "/" + filename + ".csv"
+    dataFrame.to_csv(path)
+    os.chdir(curDir)
+
+
+# utility function - saves python dictionary as a json file  - </verified/> - code borrowed from nayanGeneralUtils
+def saveDictAsJson(directory, fileName, dictionary, indent=3):
+    """File handling function - saves dictionary to directory with filename as Json with indent=indent"""
+    
+    # go to desired directory
+    curDir = os.getcwd() # get the current directory
+    os.chdir(directory)
+    
+    # save file as json
+    with open(fileName+".json", "w") as file:
+        json.dump(dictionary, file, indent=indent)
+        
+    # go back to original directory
+    os.chdir(curDir)
+
+# utility function - loads python dictionary from json file - </verified/> - code borrowed from nayanGeneralUtils
+def loadDictFromJson(directory, fileName):
+    """File handling function - loads dictionary from directory/fileName.json"""
+    # go to desired directory
+    curDir = os.getcwd() # get the current directory
+    os.chdir(directory)
+    
+    # access json file
+    with open(directory + "/" + fileName + '.json') as json_file:
+        dictionary = json.load(json_file) 
+        
+    # go back to original directory
+    os.chdir(curDir)
+    
+    return dictionary
+
+# utility function - saves fig to directory with filename - </verified/> - code borrowed from nayanGeneralUtils
 def saveFigure(directory, fileName, fig):
     """File handling function - saves fig to directory with filename"""
     # go to desired directory
@@ -40,7 +82,7 @@ def saveFigure(directory, fileName, fig):
     os.chdir(curDir)
     
     
-# create new folder
+# create new folder - </verified/> -  code borrowed from nayanGeneralUtils
 def createFolder(directory, folderName):
     """File handling function - creates new folder at 'directory/folderName'"""
     newPath = str(directory + "/"+folderName)
@@ -151,6 +193,8 @@ class config():
         self.sizes = np.full(dimension, size)
         self.sizesTuple = tuple(self.sizes)
         
+        self.beta = 0
+        
         self.adjacencyIndices = getAdjacencies(self.dimension)
         
         self.basis = getPowers(self.dimension , self.size) # basis for Nd array a
@@ -161,6 +205,10 @@ class config():
         # observables
         self.energies = np.array([])
         self.magentisation = np.array([])
+        self.partitions = np.array([])
+        self.entropies = np.array([])
+        self.helmholtzEnergies = np.array([])
+       
 
     # ------------------------------------------------
     # utility methods
@@ -253,11 +301,11 @@ class config():
         return config
 
 	# runSimulation
-    def runSimulation(self, steps, beta, saveConfigs = True, plotConfigs=False, saveObservables=False, printProgress=False, saveFigs=False, saveDirectory=""):
+    def runSimulation(self, steps, beta, saveConfigs = True, plotConfigs=False, saveObservables=True, printProgress=False, saveFigs=False, saveDirectory=""):
         
         curConfig = self.getConfig(-1, returnCopy=True)
         configSize = self.size ** self.dimension
-        
+        self.beta = beta
         for i in range(0, steps,1):
             if(printProgress):
                 print("simulation progress: ", i, " / ", steps)
@@ -279,7 +327,9 @@ class config():
             if(saveObservables):
                 self.energies = np.append(self.energies, self.calcEnergy())
                 self.magentisation = np.append(self.magentisation, self.calcMag())
-            
+                self.partitions = np.append(self.partitions, self.calcPartitionFunction(beta))
+                self.entropies = np.append(self.entropies, self.calcEntropy(beta))
+                self.helmholtzEnergies = np.append(self.entropies, self.calcHelmholtz(beta))
         #if(not saveConfigs):
         #    self.appendConfig(curConfig) # append last config to state
         
@@ -288,6 +338,7 @@ class config():
     # ------------------------------------------------
     # Observable methods
     # ------------------------------------------------
+
 
 	# observable method - calculate current energy - copy/pasted from provided code - </method verified/>
     # TODO: refactor for legibility
@@ -312,6 +363,52 @@ class config():
         return mag
     
     
+    def calcPartitionFunction(self, beta, t=-1):
+        partition = 0
+        config = self.getConfig(t)
+        for i in range(self.size):
+            for j in range(self.size):
+                S = config[i,j]
+                index = np.array([i,j]) # TODO: replace with more general system
+                neighbours = getNeighbours(config, self.size, index, self.basis, self.adjacencyIndices, self.dimension)
+                nb = np.sum(neighbours)
+                exponent = np.exp(beta * -nb*S)
+                partition += exponent
+        return partition/4.  
+    
+    def calcEntropy(self, beta, t=-1, k_b = 1):
+        return k_b * (np.log(self.partitions[t]) + self.energies[t] * beta)
+    
+    def calcHelmholtz(self,beta, t=-1):
+        return -beta * self.partitions[t]
+        
+    
+    # ------------------------------------------------
+    # accessor methods
+    # more or less average out observables for certain number of "recent" configs
+    # ------------------------------------------------
+    
+    def averageEnergy(self, startIndex, finalIndex):
+        dataRange = self.energies[startIndex: finalIndex]
+        return np.mean(dataRange), np.std(dataRange)
+    
+    def averageMag(self, startIndex, finalIndex):
+        dataRange = self.magentisation[startIndex: finalIndex]
+        return np.mean(dataRange), np.std(dataRange)
+    
+    def averagePartition(self, startIndex, finalIndex):
+        dataRange = self.partitions[startIndex: finalIndex]
+        return np.mean(dataRange), np.std(dataRange)
+    
+    def averageEntropy(self, startIndex, finalIndex):
+        dataRange = self.entropies[startIndex: finalIndex]
+        return np.mean(dataRange), np.std(dataRange)
+    
+    def averageHelmholtz(self, startIndex, finalIndex):
+        dataRange = self.helmholtzEnergies[startIndex: finalIndex]
+        return np.mean(dataRange), np.std(dataRange)
+    
+    
     
     # ------------------------------------------------
     # plotting methods
@@ -320,10 +417,10 @@ class config():
     # plot the state as a 2D image - </method verified/>
     # TODO: make better
     #TODO: lock out for D != 1, 2 = otherwise will break
-    def plotConfig(self, t=-1, returnFig=False):
+    def plotConfig(self, t=-1, returnFig=False, title=""):
         
         if(self.dimension == 1 or self.dimension == 2):
-            fig = self.plotConfig1_2D(t)
+            fig = self.plotConfig1_2D(t, title=title)
         elif(self.dimension == 3):
             fig = self.plotConfig3D(t)
         
@@ -332,9 +429,13 @@ class config():
        
         
       # graphing method - basic 1-2D plotting method 
-    def plotConfig1_2D(self, t):
+    def plotConfig1_2D(self, t, title=""):
         fig, ax = plt.subplots()
         ax.imshow(self.getConfig(t), cmap='Greys')
+        
+        # quick debugging w/plot title
+        ax.set_title(title)
+            
         plt.show()
         
         return fig

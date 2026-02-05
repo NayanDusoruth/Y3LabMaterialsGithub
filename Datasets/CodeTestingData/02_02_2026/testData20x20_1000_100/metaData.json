@@ -1,0 +1,6 @@
+{
+   "dimension": 2,
+   "size": 20,
+   "equilibrationSteps": 1000,
+   "simulationSteps": 100
+}
