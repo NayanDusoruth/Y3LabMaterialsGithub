@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import numpy as np
-
+import scipy
 
 from numba import jit
 from numba import njit
@@ -26,6 +26,14 @@ import json
 # ==========================================================================================================================================
 # code utilities
 # ==========================================================================================================================================
+
+def strLinesConcatenate(strList, current=""):
+    """utility function - concatenates and returns strList with line breaks""" # - </Verified/>
+    if(len(strList)==1):
+        return '\n'.join([current, str(strList[0])])
+    else:
+        return '\n'.join([current, strLinesConcatenate(strList[1:],current=str(strList[0]))])
+    
 
 # utility function - saves dataframe as csv to filepath/filename.csv - </verified/> - code borrowed from nayanGeneralUtils
 def saveCSV(filepath, filename, dataFrame):
@@ -89,6 +97,23 @@ def createFolder(directory, folderName):
     if (not os.path.exists(newPath)):
         os.makedirs(newPath)
     return newPath
+
+# utility function - code borrowed from https://stackoverflow.com/questions/2413522/weighted-standard-deviation-in-numpy
+def weighted_avg_and_std(values, weights, absolute=False):
+    """
+    Return the weighted average and standard deviation.
+
+    They weights are in effect first normalized so that they 
+    sum to 1 (and so they must not all be 0).
+
+    values, weights -- NumPy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights)
+    # Fast and numerically precise:
+    variance = np.average((values-average)**2, weights=weights)
+    if(absolute):
+        return abs(average), abs(np.sqrt(variance))
+    return average, np.sqrt(variance)
 
 
 def beta(T):
@@ -204,7 +229,10 @@ class config():
                 
         # observables
         self.energies = np.array([])
+        self.energiesSquared = np.array([])
         self.magentisation = np.array([])
+        self.magentisationSquared = np.array([])
+        self.magentisation4 = np.array([])
         self.partitions = np.array([])
         self.entropies = np.array([])
         self.helmholtzEnergies = np.array([])
@@ -274,7 +302,7 @@ class config():
             randomIndex = np.random.randint(0,size, size=dimension) # get random cell position
 
             # get value of config at randomIndex - note code written like this to please numba
-            flatArray = config.copy().flatten()
+            flatArray = config.flatten() # ravel
             flattenedIndex = np.sum(np.flip(randomIndex) * basis)
             s = flatArray[flattenedIndex]
             
@@ -289,7 +317,7 @@ class config():
             cost = 2*s*nb # compute cost
             if cost < 0:
                 s *= -1
-            elif rand() < np.exp(-cost*beta):
+            elif rand() < np.exp(-cost*beta): #TODO: consider precomputing this
                 s *= -1
                 
             #config = editArrayVal(config, randomIndex, sizesTuple, basis, s) #edit value
@@ -299,6 +327,66 @@ class config():
             
             
         return config
+
+    @njit()
+    def mcMove2D(config, beta, size):
+        #print("uses this")
+        curConfig = config.copy()
+        for i in range(0, size,1):
+            for j in range(0, size,1):
+                a = np.random.randint(0, size)
+                b = np.random.randint(0, size)
+                s =  curConfig[a, b]
+                nb = curConfig[(a+1)%size,b] + curConfig[a,(b+1)%size] + curConfig[(a-1)%size,b] + curConfig[a,(b-1)%size]
+                cost = 2*s*nb
+                if cost < 0:
+                    s *= -1
+                elif rand() < np.exp(-cost*beta):
+                    s *= -1
+                curConfig[a, b] = s
+        return curConfig
+    
+    @njit()
+    def mcMove3D(config, beta, size):
+        #print("uses this")
+        curConfig = config.copy()
+        for i in range(0, size,1):
+            for j in range(0, size,1):
+                for k in range(0, size,1):
+                    a = np.random.randint(0, size)
+                    b = np.random.randint(0, size)
+                    c = np.random.randint(0, size)
+                    s =  curConfig[a, b, c]
+                    nb = curConfig[(a+1)%size,b, c] + curConfig[a,(b+1)%size, c] + curConfig[(a-1)%size,b, c] + curConfig[a,(b-1)%size, c] + curConfig[a,b, (c-1)%size] + curConfig[a,b, (c+1)%size]
+                    cost = 2*s*nb
+                    if cost < 0:
+                        s *= -1
+                    elif rand() < np.exp(-cost*beta):
+                        s *= -1
+                        curConfig[a, b] = s
+        return curConfig
+    
+    @njit()
+    def mcMove4D(config, beta, size):
+        #print("uses this")
+        curConfig = config.copy()
+        for i in range(0, size,1):
+            for j in range(0, size,1):
+                for k in range(0, size,1):
+                    for z in range(0, size,1):
+                        a = np.random.randint(0, size)
+                        b = np.random.randint(0, size)
+                        c = np.random.randint(0, size)
+                        d = np.random.randint(0, size)
+                        s =  curConfig[a, b, c, d]
+                        nb = curConfig[(a+1)%size,b, c, d] + curConfig[a,(b+1)%size, c, d] + curConfig[(a-1)%size,b, c, d] + curConfig[a,(b-1)%size, c, d] + curConfig[a,b, (c-1)%size, d] + curConfig[a,b, (c+1)%size, d]+ curConfig[a,b, c, (d+1)%size]+ curConfig[a,b, c, (d-1)%size]
+                        cost = 2*s*nb
+                        if cost < 0:
+                            s *= -1
+                        elif rand() < np.exp(-cost*beta):
+                            s *= -1
+                            curConfig[a, b] = s
+        return curConfig
 
 	# runSimulation
     def runSimulation(self, steps, beta, saveConfigs = True, plotConfigs=False, saveObservables=True, printProgress=False, saveFigs=False, saveDirectory=""):
@@ -312,10 +400,19 @@ class config():
             
             
             # simulate step
-            curConfig = config.mcMove(curConfig, beta, self.size, self.dimension, self.basis, self.sizes, self.sizesTuple, configSize, self.adjacencyIndices)
+            if(self.dimension == 2):
+                curConfig = config.mcMove2D(curConfig, beta, self.size)
+            elif(self.dimension == 3):
+                curConfig = config.mcMove3D(curConfig, beta, self.size)
+            elif(self.dimension == 4):
+                curConfig = config.mcMove4D(curConfig, beta, self.size)
+            else:
+                curConfig = config.mcMove(curConfig, beta, self.size, self.dimension, self.basis, self.sizes, self.sizesTuple, configSize, self.adjacencyIndices)
 
             if(saveConfigs): 
                self.appendConfig(curConfig)
+            else:
+                self.state[-1] = curConfig
 
             if(saveFigs):
                 saveFigure(saveDirectory, str(i), self.plotConfig( t=-1, returnFig=True))
@@ -326,10 +423,15 @@ class config():
             # compute and save observables
             if(saveObservables):
                 self.energies = np.append(self.energies, self.calcEnergy())
+                self.energiesSquared = np.append(self.energiesSquared, self.calcEnergy()**2)
                 self.magentisation = np.append(self.magentisation, self.calcMag())
+                self.magentisationSquared = np.append(self.magentisationSquared, self.calcMag()**2)
+                self.magentisation4 = np.append(self.magentisation4, self.calcMag()**4)
                 self.partitions = np.append(self.partitions, self.calcPartitionFunction(beta))
                 self.entropies = np.append(self.entropies, self.calcEntropy(beta))
-                self.helmholtzEnergies = np.append(self.entropies, self.calcHelmholtz(beta))
+                self.helmholtzEnergies = np.append(self.helmholtzEnergies, self.calcHelmholtz(beta))
+                #print(self.calcMag())
+        
         #if(not saveConfigs):
         #    self.appendConfig(curConfig) # append last config to state
         
@@ -338,7 +440,27 @@ class config():
     # ------------------------------------------------
     # Observable methods
     # ------------------------------------------------
-
+    
+    # recompute observables in a range - breaks if the configs don't exist
+    def recomputeObservables(self):
+        beta = self.beta
+        
+        for i in range(0, len(self.state),1):
+            self.energies[i] = self.calcEnergy(t=i)
+            self.energiesSquared[i] =  self.calcEnergy(t=i)**2
+            self.magentisation[i] =self.calcMag(t=i)
+            self.magentisationSquared[i] = self.calcMag(t=i)**2
+            self.magentisation4[i] = self.calcMag(t=i)**4
+            self.partitions[i] = self.calcPartitionFunction(beta, t=i)
+            self.entropies[i] = self.calcEntropy(beta, t=i)
+            self.helmholtzEnergies[i] = self.calcHelmholtz(beta, t=i)
+            #print(i)
+    
+    # recompute mag^4 specifically
+    def recomputeMag4(self):
+        beta = self.beta
+        mag = self.magentisation.copy()
+        self.magentisation4 = mag**4
 
 	# observable method - calculate current energy - copy/pasted from provided code - </method verified/>
     # TODO: refactor for legibility
@@ -347,14 +469,22 @@ class config():
         '''Energy of a given configuration'''
         energy = 0
         config = self.getConfig(t)
-        for i in range(self.size):
-            for j in range(self.size):
-                S = config[i,j]
-                index = np.array([i,j]) # TODO: replace with more general system
-                neighbours = getNeighbours(config, self.size, index, self.basis, self.adjacencyIndices, self.dimension)
-                nb = np.sum(neighbours)
-                energy += -nb*S
-        return energy/4.  
+        flatArray = config.copy().flatten()
+        totalSize = self.size ** self.dimension
+        
+        
+        for cell in range(0, totalSize, 1): 
+            S = flatArray[cell]
+
+            nb = 0
+            # get neighbour indices using adjacencyIndices and use that to add neighbour spin values to nb
+            for i in range(0, 2*self.dimension, 1):
+                currentIndex = (self.adjacencyIndices[i] + cell)%self.size
+                flattenedIndex = np.sum(np.flip(currentIndex) * self.basis)
+                nb +=flatArray[flattenedIndex]
+            
+            energy += -nb*S
+        return energy/len(self.basis) 
     
     # observable method - calculate current magnetisation - copy/pasted from provided code - </method verified/>
     def calcMag(self, t=-1):
@@ -366,49 +496,198 @@ class config():
     def calcPartitionFunction(self, beta, t=-1):
         partition = 0
         config = self.getConfig(t)
-        for i in range(self.size):
-            for j in range(self.size):
-                S = config[i,j]
-                index = np.array([i,j]) # TODO: replace with more general system
-                neighbours = getNeighbours(config, self.size, index, self.basis, self.adjacencyIndices, self.dimension)
-                nb = np.sum(neighbours)
-                exponent = np.exp(beta * -nb*S)
-                partition += exponent
-        return partition/4.  
+        flatArray = config.copy().flatten()
+        totalSize = self.size ** self.dimension
+        
+        for cell in range(0, totalSize, 1): 
+            S = flatArray[cell]
+
+            nb = 0
+            # get neighbour indices using adjacencyIndices and use that to add neighbour spin values to nb
+            for i in range(0, 2*self.dimension, 1):
+                currentIndex = (self.adjacencyIndices[i] + cell)%self.size
+                flattenedIndex = np.sum(np.flip(currentIndex) * self.basis)
+                nb +=flatArray[flattenedIndex]
+            
+            energy = -nb*S
+            
+            exponent = np.exp(beta * -energy)
+            partition += exponent
+    
+        return partition/len(self.basis)  
     
     def calcEntropy(self, beta, t=-1, k_b = 1):
         return k_b * (np.log(self.partitions[t]) + self.energies[t] * beta)
     
     def calcHelmholtz(self,beta, t=-1):
-        return -beta * self.partitions[t]
+        return -beta * np.log(self.partitions[t])
+      
+    # note, average observables should be weighted by boltzman distribution as \frac{1}{Z}\sum{e^{-H\beta} \cdot A_{i}} for observable A_{i} - this method computes the weights for weighted averaging
+    def boltzmanWeights(self, startIndex, finalIndex):
+        partitions = self.partitions[startIndex: finalIndex]
+        energies = self.energies[startIndex: finalIndex]
         
+        exp = -energies * self.beta
+        exp = exp.astype(np.float128)
+        exponents = np.exp(exp)
+        return exponents / partitions
     
     # ------------------------------------------------
     # accessor methods
     # more or less average out observables for certain number of "recent" configs
     # ------------------------------------------------
     
-    def averageEnergy(self, startIndex, finalIndex):
+    def averageEnergy(self, startIndex, finalIndex, perSpin=False, absolute=False):
         dataRange = self.energies[startIndex: finalIndex]
-        return np.mean(dataRange), np.std(dataRange)
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = self.size ** self.dimension
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells
+            dev = dev / numCells
+            
+            return ave, dev
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
+        
     
-    def averageMag(self, startIndex, finalIndex):
+    def averageEnergySquared(self, startIndex, finalIndex,perSpin=False, absolute=False):
+        dataRange = self.energiesSquared[startIndex: finalIndex]
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = self.size ** self.dimension
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells
+            dev = dev / numCells
+            
+            return ave, dev
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
+        
+    def averageMag(self, startIndex, finalIndex, perSpin=True, absolute=False):
         dataRange = self.magentisation[startIndex: finalIndex]
-        return np.mean(dataRange), np.std(dataRange)
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = self.size ** self.dimension
+            #print(numCells)
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells
+            dev = dev / numCells
+            
+            return ave, dev
+            
+        
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
     
-    def averagePartition(self, startIndex, finalIndex):
+    def averageMagSquared(self, startIndex, finalIndex,perSpin=True, absolute=False):
+        dataRange = self.magentisation[startIndex: finalIndex]**2
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = (self.size ** self.dimension)**2
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells
+            dev = dev / numCells
+            
+            return ave, dev
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
+    
+    def averageMag4(self, startIndex, finalIndex,perSpin=True, absolute=False):
+        dataRange = self.magentisation4[startIndex: finalIndex]
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = self.size ** self.dimension
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells**4
+            dev = dev / numCells**4
+            
+            return ave, dev
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
+    
+    def averagePartition(self, startIndex, finalIndex,perSpin=False, absolute=False):
         dataRange = self.partitions[startIndex: finalIndex]
-        return np.mean(dataRange), np.std(dataRange)
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = self.size ** self.dimension
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells
+            dev = dev / numCells
+            
+            return ave, dev
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
     
-    def averageEntropy(self, startIndex, finalIndex):
+    def averageEntropy(self, startIndex, finalIndex,perSpin=False, absolute=False):
         dataRange = self.entropies[startIndex: finalIndex]
-        return np.mean(dataRange), np.std(dataRange)
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = self.size ** self.dimension
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells
+            dev = dev / numCells
+            
+            return ave, dev
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
     
-    def averageHelmholtz(self, startIndex, finalIndex):
+    def averageHelmholtz(self, startIndex, finalIndex,perSpin=False, absolute=False):
         dataRange = self.helmholtzEnergies[startIndex: finalIndex]
-        return np.mean(dataRange), np.std(dataRange)
+        weights = np.full(len(dataRange),1)#self.boltzmanWeights(startIndex, finalIndex)
+        if(perSpin):
+            numCells = self.size ** self.dimension
+            ave, dev = weighted_avg_and_std(dataRange, weights, absolute=absolute)
+            ave = ave / numCells
+            dev = dev / numCells
+            
+            return ave, dev
+        return weighted_avg_and_std(dataRange, weights, absolute=absolute)
     
+    # TODO: fix
+    def susceptibility(self, startIndex, finalIndex, perSpin=False, absolute=False):
+        magnetisations = self.magentisation[startIndex: finalIndex: 20]
+        magnetisationsSquared = magnetisations * magnetisations
+        
+        # regular average
+        mag, magDev = np.mean(magnetisations), np.std(magnetisationsSquared)#self.averageMag(startIndex, finalIndex)
+        mag2, magDev2 = np.mean(magnetisationsSquared), np.std(magnetisationsSquared)#self.averageEnergySquared(startIndex, finalIndex)
+        
+        # weighted average
+        #mag, magDev = self.averageMag(startIndex, finalIndex,perSpin=perSpin, absolute=absolute)
+        #mag2, magDev2 = self.averageMagSquared(startIndex, finalIndex,perSpin=perSpin, absolute=absolute)
+        
+        numSpins = self.size ** self.dimension
+        
+        susceptibility = self.beta * (mag**2 - mag2) /numSpins
+        susceptibilityErr = 0#np.sqrt((self.beta / numSpins)**2 * (4 * mag**2 * magDev**2 + magDev2**2))
+        
+        if(absolute):
+            return abs(susceptibility), abs(susceptibilityErr)
+        return susceptibility, susceptibilityErr
     
+    #TODO: fix
+    def heatCapacity(self, startIndex, finalIndex, perSpin=False, absolute=False):
+        energies = self.energies[startIndex: finalIndex]
+        energiesSquared = energies ** 2
+        # regular average
+        #E, EDev = np.mean(energies), np.std(energies)#self.averageEnergy(startIndex, finalIndex)
+        #E2, EDev2 =  np.mean(energiesSquared), np.std(energiesSquared)#self.averageEnergySquared(startIndex, finalIndex)
+        
+        # weighted average
+        E, EDev = self.averageEnergy(startIndex, finalIndex,perSpin=perSpin, absolute=absolute)
+        E2, EDev2 =  self.averageEnergySquared(startIndex, finalIndex,perSpin=perSpin, absolute=absolute)
+        
+        numSpins = self.size ** self.dimension
+        
+        heatCapacity = self.beta**2 * (E**2 - E2) /numSpins
+        heatCapacityErr = 0#np.sqrt((self.beta**2 / numSpins)**2 * (4 * E**2 * EDev**2 + EDev2**2))
+        
+        if(absolute):
+            return abs(heatCapacity), abs(heatCapacityErr)
+        return heatCapacity, heatCapacityErr
+    
+    def binderCumulant(self, startIndex, finalIndex, absolute=False):
+        s4, s4Dev = self.averageMag4(startIndex, finalIndex,perSpin=True, absolute=False)
+        s2, s2Dev = self.averageMagSquared(startIndex, finalIndex,perSpin=True, absolute=False)
+        cumulant = 1 - s4 / (3 * s2)
+        cumulantErr = 0
+        
+        
+        return cumulant, cumulantErr
     
     # ------------------------------------------------
     # plotting methods
@@ -456,9 +735,9 @@ class config():
 
 # testing
     
-testDirectory = "/Users/nayandusoruth/Desktop/Y3physics/LabModule/labProject/testFolder"
-#testConfig = config()
-
+#testDirectory = "/Users/nayandusoruth/Desktop/Y3physics/LabModule/labProject/testFolder"
+#testConfig = config(size=20, dimension=2)
+#testConfig.runSimulation(2000, 1.2, saveConfigs = False, plotConfigs=True, saveObservables=True, printProgress=False, saveFigs=False, saveDirectory="")
 #testConfig.saveToFile(testDirectory, "testName")
 
 #readConfig = config.readFromFile(testDirectory, "testName")
